@@ -769,7 +769,7 @@ export default function App() {
                         <thead className="bg-slate-50/50 text-slate-400 uppercase text-[9px] font-black tracking-[0.3em]">
                           <tr>
                             <th className="px-10 py-8">RCA / Representante Comercial</th>
-                            <th className="px-10 py-8 text-center">Volume Total</th>
+                            <th className="px-10 py-8 text-center">Quantidade de Itens </th>
                             <th className="px-10 py-8 text-center">Clientes Positivos</th>
                             <th className="px-10 py-8 text-right">Cash Out Estimado</th>
                             <th className="px-10 py-8 text-center">Visualização</th>
@@ -831,7 +831,7 @@ export default function App() {
 
                                             <div className="space-y-4 pt-4 border-t border-slate-100/50">
                                               <div className="flex justify-between items-center">
-                                                <span className="text-[10px] font-bold text-slate-400 uppercase">Volume</span>
+                                                <span className="text-[10px] font-bold text-slate-400 uppercase">QT.Itens</span>
                                                 <span className="text-lg font-black text-slate-800 tabular-nums">{cli.totalQtd}</span>
                                               </div>
                                               <div className="flex justify-between items-center">
@@ -925,7 +925,7 @@ export default function App() {
                           <p className="text-lg font-black text-slate-800 tabular-nums">{entry.rcas}</p>
                         </div>
                         <div className="bg-slate-50 p-4 rounded-3xl group-hover:bg-indigo-50 transition-colors">
-                          <p className="text-[8px] font-black text-slate-400 uppercase mb-1">Ganhadores</p>
+                          <p className="text-[8px] font-black text-slate-400 uppercase mb-1">Clientes Premiados</p>
                           <p className="text-lg font-black text-slate-800 tabular-nums">{entry.totals.premiados}</p>
                         </div>
                       </div>
