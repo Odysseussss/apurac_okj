@@ -49,6 +49,9 @@ interface Sale {
   'Pedido de venda - Quantidade de itens'?: string | number;
   'quantidade de unidades vendidas'?: string | number;
   Quantidade?: string | number;
+  'Data Venda'?: string | number;
+  Data?: string | number;
+  Emissão?: string | number;
 }
 
 interface TieredRule {
@@ -90,6 +93,7 @@ interface HistoryEntry {
     premiados: number;
   };
   rcas: number;
+  fullResults?: RcaData[];
 }
 
 // Estendendo o objeto window
@@ -119,6 +123,7 @@ export default function App() {
   const [mechanicType, setMechanicType] = useState<'min' | 'tiered' | 'combo'>('min');
   const [minItems, setMinItems] = useState(7);
   const [prizeValue, setPrizeValue] = useState(10);
+  const [targetDate, setTargetDate] = useState('');
 
   // Configurações de Mecânicas Avançadas
   const [tieredRules, setTieredRules] = useState<TieredRule[]>([]);
@@ -197,6 +202,18 @@ export default function App() {
       const rawQtd = sale['Pedido de venda - Quantidade de itens'] || sale['quantidade de unidades vendidas'] || sale.Quantidade || 0;
       const qtd = Math.max(0, parseInt(String(rawQtd)) || 0);
 
+      // Tratamento de Data para Mecânica de não positivados
+      let rawDate = sale['Data Venda'] || sale.Data || sale.Emissão;
+      let dateValue: Date | null = null;
+      if (rawDate) {
+        if (typeof rawDate === 'number') {
+          // Serial Excel
+          dateValue = new Date((rawDate - 25569) * 86400 * 1000);
+        } else {
+          dateValue = new Date(String(rawDate));
+        }
+      }
+
       if (!rcaMap[rcaName]) {
         rcaMap[rcaName] = { name: rcaName, clientes: {}, totalPremiacao: 0, totalVendas: 0 };
       }
@@ -208,17 +225,30 @@ export default function App() {
           ganhou: false,
           premio: 0,
           categories: {},
-          products: new Set<string>()
-        };
+          products: new Set<string>(),
+          // Extendendo customer localmente para controle de data
+          _historyBefore: 0,
+          _vendasDepois: 0
+        } as any;
       }
 
-      const client = rcaMap[rcaName].clientes[clienteId];
-      client.totalQtd += qtd;
-      client.products.add(prodCode);
+      const client = rcaMap[rcaName].clientes[clienteId] as any;
 
+      if (targetDate && dateValue) {
+        const threshold = new Date(targetDate);
+        if (dateValue < threshold) {
+          client._historyBefore += qtd;
+        } else {
+          client._vendasDepois += qtd;
+          client.totalQtd += qtd;
+        }
+      } else {
+        client.totalQtd += qtd;
+      }
+
+      client.products.add(prodCode);
       const cat = product.category;
       client.categories[cat] = (client.categories[cat] || 0) + qtd;
-
       rcaMap[rcaName].totalVendas += qtd;
     });
 
@@ -227,6 +257,7 @@ export default function App() {
       const clientesArray = Object.values(rca.clientes).map(c => {
         let ganhou = false;
         let premio = 0;
+        const clientAny = c as any;
 
         if (mechanicType === 'min') {
           ganhou = c.totalQtd >= minItems;
@@ -251,6 +282,13 @@ export default function App() {
           });
         }
 
+        // --- FILTRO GLOBAL DE NÃO POSITIVADOS (v0.3.1) ---
+        // Se houver uma data alvo, e o cliente já tiver comprado antes, ele NÃO ganha prêmio
+        if (targetDate && clientAny._historyBefore > 0) {
+          ganhou = false;
+          premio = 0;
+        }
+
         premiacaoRca += premio;
         return { ...c, ganhou, premio };
       });
@@ -265,7 +303,7 @@ export default function App() {
     });
 
     return finalData.sort((a, b) => b.totalPremiacao - a.totalPremiacao);
-  }, [productsData, salesData, mechanicType, minItems, prizeValue, tieredRules, comboRules]);
+  }, [productsData, salesData, mechanicType, minItems, prizeValue, tieredRules, comboRules, targetDate]);
 
   const totals = useMemo(() => {
     if (!results) return { premiacao: 0, rcas: 0, premiados: 0 };
@@ -283,7 +321,8 @@ export default function App() {
       date: new Date().toLocaleString(),
       mechanic: mechanicType,
       totals: totals,
-      rcas: results.length
+      rcas: results.length,
+      fullResults: results
     };
     const updatedHistory = [newEntry, ...history];
     setHistory(updatedHistory);
@@ -310,6 +349,24 @@ export default function App() {
     const wb = window.XLSX.utils.book_new();
     window.XLSX.utils.book_append_sheet(wb, ws, "Apuração");
     window.XLSX.writeFile(wb, `Apuracao_${mechanicType}_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
+  const downloadHistoryExcel = (entry: HistoryEntry) => {
+    if (!entry.fullResults) {
+      alert("Este registro não possui dados detalhados para exportação.");
+      return;
+    }
+    const exportData = entry.fullResults.map(r => ({
+      'RCA': r.name,
+      'Total Vendas (Unidades)': r.totalVendas,
+      'Clientes Positivados': r.clientesAtendidos,
+      'Clientes Premiados': r.clientesPremiados,
+      'Premiação Total (R$)': r.totalPremiacao
+    }));
+    const ws = window.XLSX.utils.json_to_sheet(exportData);
+    const wb = window.XLSX.utils.book_new();
+    window.XLSX.utils.book_append_sheet(wb, ws, "Apuração_Retroativa");
+    window.XLSX.writeFile(wb, `Apuracao_Historico_${entry.date.replace(/[/]/g, '-')}.xlsx`);
   };
 
   const filteredResults = useMemo(() => {
@@ -341,7 +398,7 @@ export default function App() {
             <TrendingUp size={24} />
           </div>
           <div>
-            <h1 className="text-xl font-black text-slate-800 tracking-tighter leading-none">APURAC <span className="text-indigo-600">PORTAL</span></h1>
+            <h1 className="text-xl font-black text-slate-800 tracking-tighter leading-none">APR <span className="text-indigo-600">PORTAL</span></h1>
             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">v0.2 OkajimaBI</p>
           </div>
         </div>
@@ -365,7 +422,7 @@ export default function App() {
         <div className="mt-auto p-5 bg-gradient-to-br from-slate-50 to-white rounded-3xl border border-slate-100 shadow-sm">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center font-black text-sm shadow-md">
-              OD
+              Li
             </div>
             <div className="overflow-hidden">
               <p className="text-xs font-black text-slate-800 truncate">Lilicos</p>
@@ -441,9 +498,35 @@ export default function App() {
                     <h3 className="text-xl font-black text-white tracking-tight">Parametros da Campanha</h3>
                   </div>
                   <div className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] bg-white/5 px-4 py-2 rounded-full border border-white/5">
-                    Motor v2.0
+                    Motor v2.1
                   </div>
                 </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pb-4">
+                  <div className="space-y-3">
+                    <label className="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em]">Data Venda (Corte de Positivação)</label>
+                    <input
+                      type="date"
+                      value={targetDate}
+                      onChange={(e) => setTargetDate(e.target.value)}
+                      className="w-full bg-slate-800 text-white rounded-2xl px-6 py-3.5 text-sm font-black outline-none border border-white/5 focus:border-indigo-500 transition-all placeholder:text-slate-600 shadow-xl"
+                    />
+                    <p className="text-[10px] text-slate-500 font-medium italic leading-relaxed">
+                      * Se preenchida, clientes com compras antes desta data serão excluídos da premiação (Filtro Não Positivados).
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-4 bg-white/5 p-6 rounded-3xl border border-white/5 self-start mt-6">
+                    <div className="p-2 bg-indigo-500/20 rounded-lg text-indigo-400">
+                      <AlertCircle size={16} />
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black text-white uppercase tracking-widest">Filtro de Positivação</p>
+                      <p className="text-[9px] text-slate-400 font-bold leading-tight mt-0.5">Aplica exclusão de clientes recorrentes em qualquer mecânica selecionada.</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="h-px bg-white/5 my-2"></div>
 
                 {mechanicType === 'min' && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-12 pt-4">
@@ -833,7 +916,7 @@ export default function App() {
 
                     <div className="space-y-6 pt-8 border-t border-slate-50">
                       <div className="flex justify-between items-center">
-                        <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Payout</span>
+                        <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Montante Total</span>
                         <span className="text-2xl font-black text-emerald-600 tabular-nums">R$ {entry.totals.premiacao.toLocaleString('pt-BR')}</span>
                       </div>
                       <div className="grid grid-cols-2 gap-4">
@@ -850,12 +933,10 @@ export default function App() {
 
                     <div className="flex gap-4 mt-8">
                       <button
-                        className="flex-grow py-5 bg-slate-900 text-white font-black text-[10px] uppercase tracking-[0.2em] rounded-[24px] shadow-2xl shadow-indigo-100 group-hover:bg-indigo-600 transition-all duration-500 active:scale-95"
-                        onClick={() => {
-                          alert('Carregando dados históricos no dashboard...');
-                        }}
+                        className="flex-grow py-5 bg-slate-900 text-white font-black text-[10px] uppercase tracking-[0.2em] rounded-[24px] shadow-2xl shadow-indigo-100 group-hover:bg-indigo-600 transition-all duration-500 active:scale-95 flex items-center justify-center gap-2"
+                        onClick={() => downloadHistoryExcel(entry)}
                       >
-                        Revisar Planilhas
+                        <FileDown size={18} /> Baixar Dados
                       </button>
                       <button
                         onClick={() => deleteHistoryItem(entry.id)}

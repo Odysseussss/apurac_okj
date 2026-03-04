@@ -17,6 +17,5 @@ A versão 0.2 introduz mudanças estruturais significativas, transformando o por
 - Suporte a múltiplos códigos de produto na mesma mecânica (Combo).
 
 ## Próximos Passos (Backlog)
-- [ ] Carregamento total de dados salvos do histórico (visualização completa).
-- [ ] Gráficos de tendência de desempenho por RCA.
-- [ ] Adicionar novas lógicas para apuração de mecânicas.
+- [x] Carregamento total de dados salvos do histórico (visualização completa).
+- [x] Adicionar novas lógicas para apuração de mecânicas.
